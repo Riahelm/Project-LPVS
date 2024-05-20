@@ -1,0 +1,132 @@
+MODULE main
+    VAR
+        t1 : tag(r);
+        t2 : tag(r);
+        t3 : tag(r);
+        t4 : tag(r);
+        r : reader(t1, t2, t3, t4);
+    -- Unsafety condition: checks if AT LEAST two tags are capable of transmitting simultaneously
+    CTLSPEC
+    EF  ((t1.state = transmit & t2.state = transmit) |
+         (t1.state = transmit & t3.state = transmit) |
+         (t1.state = transmit & t4.state = transmit) |
+         (t2.state = transmit & t3.state = transmit) |
+         (t2.state = transmit & t4.state = transmit) |
+         (t3.state = transmit & t4.state = transmit) )
+    -- Unsafety condition: checks that the previous condition is respected
+    CTLSPEC
+    AG  (!(t1.state = transmit & t2.state = transmit) &
+         !(t1.state = transmit & t3.state = transmit) &
+         !(t1.state = transmit & t4.state = transmit) &
+         !(t2.state = transmit & t3.state = transmit) &
+         !(t2.state = transmit & t4.state = transmit) &
+         !(t3.state = transmit & t4.state = transmit) )
+
+    -- Raggiungibilità estesa: verifica se prima o poi la condizione in cui tutti i chip sono nello stato collapse si possa verificare
+    CTLSPEC
+    AG EF((t1.state=collapse) & (t2.state=collapse) & (t3.state=collapse))
+
+    -- Fairness debole: garantisce che il chip3 abbia la possibilità di passare dallo stato request allo stato coinHeads a prescindere da altri vincoli o transizioni.
+    LTLSPEC
+    F(G t3.state=request) -> G(F t3.state=coinHeads) 
+
+    -- Fairness incondizionata: verifica se periodicamenre lo stato del lettore sarà completed, indipendentemente dalle altre attività in corso nel sistema
+    CTLSPEC
+    AG AF (r.state=completed)
+
+    -- Fairness forte: verifica che, se infinitamente spesso tutti i chip sono nello stato collapse allora infinitamente spesso il lettore si trova nello stato completed
+    LTLSPEC
+    G F(((t1.state=collapse) & (t2.state=collapse) & (t3.state=collapse)) -> G F(r.state=completed))
+
+    -- Verifica della condizione di starvation di un chip "proprietà di liveness"
+    CTLSPEC
+    AG ((t1.state=request) -> AF (t1.state=transmit))
+
+MODULE tag(reader)
+    VAR
+    state:  {idle, 
+             request,
+             coinTails,
+             transmit,
+             collapse,
+             wait};
+    
+    ASSIGN
+        init(state) := idle;
+
+        next(state) :=
+            case
+                state = idle                                        : request;
+                state = request   & reader.state = collision        : {request, coinTails};
+                state = request   & reader.state = notCollision     : transmit;
+                state = request   & reader.state = notCollisionFinal: transmit;
+                state = transmit                                    : collapse;
+                state = collapse  & reader.state=completed          : idle;
+                state = coinTails                                   : wait;
+                state = wait      & reader.state = free             : idle;
+                TRUE : state;
+            esac;
+
+MODULE reader(t1, t2, t3, t4)
+    VAR
+        state : {idle,
+                 collision,
+                 notCollision,
+                 notCollisionFinal,
+                 free,
+                 no_oneSpeak,
+                 completed};
+    
+    ASSIGN
+        init(state) := idle;
+
+        next(state) :=
+            case 
+                state=idle & (t1.state = request  & t2.state = collapse & t3.state = collapse & t4.state = collapse) : notCollisionFinal;
+                state=idle & (t1.state = collapse & t2.state = request  & t3.state = collapse & t4.state = collapse) : notCollisionFinal;
+                state=idle & (t1.state = collapse & t2.state = collapse & t3.state = request  & t4.state = collapse) : notCollisionFinal;
+                state=idle & (t1.state = collapse & t2.state = collapse & t3.state = collapse & t4.state = request)  : notCollisionFinal;
+                
+                state=idle &    ((t1.state=request & t2.state=request) | 
+                                 (t1.state=request & t3.state=request) | 
+                                 (t1.state=request & t4.state=request) | 
+                                 (t2.state=request & t3.state=request) |
+                                 (t2.state=request & t4.state=request) |
+                                 (t3.state=request & t4.state=request)): collision;
+                
+                state=collision & (t1.state=request                    & 
+                                   (t2.state=wait | t2.state=collapse) & 
+                                   (t3.state=wait | t3.state=collapse) & 
+                                   (t4.state=wait | t4.state=collapse)): notCollision;
+
+                state=collision & ((t1.state=wait | t1.state=collapse) & 
+                                   t2.state=request                    & 
+                                   (t3.state=wait | t3.state=collapse) & 
+                                   (t4.state=wait | t4.state=collapse)): notCollision;
+
+                state=collision & ((t1.state=wait | t1.state=collapse) &
+                                   (t2.state=wait | t2.state=collapse) & 
+                                   t3.state=request                    & 
+                                   (t4.state=wait | t4.state=collapse)): notCollision;
+
+                state=collision & ((t1.state=wait | t1.state=collapse) &
+                                   (t2.state=wait | t2.state=collapse) & 
+                                   (t3.state=wait | t3.state=collapse) & 
+                                   t4.state=request)                   : notCollision;
+                
+                
+
+                state=collision & ((t1.state=wait | t1.state=collapse) & 
+                                   (t2.state=wait | t2.state=collapse) &
+                                   (t3.state=wait | t3.state=collapse) & 
+                                   (t4.state=wait | t4.state=collapse)): free;
+                                   -- IMPOSSIBLE FOR THIS TO BE TRUE!! (t1.state=collapse & t2.state=collapse & t3.state=collapse & t4.state=collapse) &   
+                
+                state=idle & ((t1.state=collapse) & (t2.state=collapse) & (t3.state=collapse) & (t4.state=collapse)) : completed;
+                
+                state=notCollision : free;
+                state=notCollisionFinal : idle;
+                state=free : idle;
+                state=completed : idle;  
+                TRUE : state;
+            esac;
