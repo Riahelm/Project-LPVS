@@ -66,19 +66,18 @@ MODULE tag(reader)
         next(state) :=
             case
                 -- When in the initial state, immediately try to send a message.
-                state = idle                                        : request;
+                state = idle : request;
                 -- If there are multiple tags requesting to send, throw a four sided die.
                 -- If it lands on 4, keep requesting.
                 -- If it lands on anything else, start waiting and move yourself out of the queue.
                 state = request & reader.state = collision        : {D1, D2, D3, D4};
-                
-                state = D4 & reader.state = collision        : {D1, D2, D3, D4};
 
-
+                state = D4 & reader.state = collision       : request;
+                -- If there is a single tag requesting to send, send a message.
+                !(state = wait | state = transmitted) & reader.state = notCollision : transmitting;
                 state=request & reader.state = final : transmitting;
 
-                -- If there is a single tag requesting to send, send a message.
-                (state = D1 | state = D2 | state = D3 | state = D4) & reader.state = notCollision : transmitting;
+                
                 -- If it landed on any failing side, start waiting.
                 state = D1 | state = D2 | state = D3 : wait;
 
@@ -114,40 +113,45 @@ MODULE reader(t1, t2, t3, t4)
             case 
                 state=idle & (t1.state=request     & t2.state=transmitted & t3.state=transmitted & t4.state=transmitted) : final; 
                 state=idle & (t1.state=transmitted & t2.state=request     & t3.state=transmitted & t4.state=transmitted) : final; 
-                state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=request   & t4.state=transmitted) : final; 
-                state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=transmitted & t4.state=request  ) : final;
-                -- If there are at least two tags requesting to transmit, go in the collision state and ask the tags to flip a coin.
+                state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=request     & t4.state=transmitted) : final; 
+                state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=transmitted & t4.state=request  )   : final;
+                -- If there are at least two tags requesting to transmit, go in the collision state and ask the tags to throw a die.
+
                 state=idle &    (((t1.state=request | t1.state=D4) & (t2.state=request | t2.state=D4))    | 
                                  ((t1.state=request | t1.state=D4) & (t3.state=request | t3.state=D4))    | 
                                  ((t1.state=request | t1.state=D4) & (t4.state=request | t4.state=D4))    | 
                                  ((t2.state=request | t2.state=D4) & (t3.state=request | t3.state=D4))    |
                                  ((t2.state=request | t2.state=D4) & (t4.state=request | t4.state=D4))    |
-                                 ((t3.state=request | t3.state=D4) & (t4.state=request | t4.state=D4))    |
-                                 ((t1.state=request | t1.state=D4) & (t2.state=request | t2.state = D4 ) & (t3.state=request | t3.state=D4) & (t4.state=request | t4.state=D4))): collision;
-                
+                                 ((t3.state=request | t3.state=D4) & (t4.state=request | t4.state=D4)))   : collision;
+
                 -- Case in which the only tag in the queue is requesting to transmit, collision isn't present here.
-                state=collision & ((t1.state=D4)          & 
+                --state=collision & ((t1.state = request | t1.state=D4)          & 
+                --                   (t2.state = D1 | t2.state = D2 | t2.state = D3 | t2.state=wait    | t2.state=transmitted) & 
+                --                   (t3.state = D1 | t3.state = D2 | t3.state = D3 | t3.state=wait    | t3.state=transmitted) & 
+                --                   (t4.state = D1 | t4.state = D2 | t4.state = D3 | t4.state=wait    | t4.state=transmitted)): notCollision;
+
+                state=collision & ((t1.state = request | t1.state=D4)          & 
                                    (t2.state=wait    | t2.state=transmitted) & 
                                    (t3.state=wait    | t3.state=transmitted) & 
                                    (t4.state=wait    | t4.state=transmitted)): notCollision;
 
                 -- Case in which the only tag in the queue is requesting to transmit, collision isn't present here.
                 state=collision & ((t1.state=wait    | t1.state=transmitted) & 
-                                   (t2.state=D4)          & 
+                                   (t2.state = request | t2.state=D4)          & 
                                    (t3.state=wait    | t3.state=transmitted) & 
                                    (t4.state=wait    | t4.state=transmitted)): notCollision;
 
                 -- Case in which the only tag in the queue is requesting to transmit, collision isn't present here.
                 state=collision & ((t1.state=wait    | t1.state=transmitted) &
                                    (t2.state=wait    | t2.state=transmitted) & 
-                                   (t3.state=D4)          & 
+                                   (t3.state = request | t3.state=D4)          & 
                                    (t4.state=wait    | t4.state=transmitted)): notCollision;
 
                 -- Case in which the only tag in the queue is requesting to transmit, collision isn't present here.
                 state=collision & ((t1.state=wait    | t1.state=transmitted) &
                                    (t2.state=wait    | t2.state=transmitted) & 
                                    (t3.state=wait    | t3.state=transmitted) & 
-                                   (t4.state=D4))         : notCollision;
+                                   (t4.state = request | t4.state=D4))       : notCollision;
                 
                 -- Case in which all readers have put themselves in the queue or have already transmitted,
                 -- makes the remaining tags put themselves back in the queue.
@@ -158,42 +162,24 @@ MODULE reader(t1, t2, t3, t4)
                                    (t3.state=wait | t3.state=transmitted) & 
                                    (t4.state=wait | t4.state=transmitted)): free;
                                       
-                -- Case in which a collision isn't present and only one tag is asking to send. In such a case, start receiving.
-                --state=notCollision & ((t1.state = request | t1.state = D4) & (t2.state = transmitted | t2.state = wait) & (t3.state = transmitted | t3.state = wait) & (t4.state = transmitted   | t4.state = wait)) : receiving1;
-                -- Case in which a collision isn't present and only one tag is asking to send. In such a case, start receiving.
-                --state=notCollision & ((t1.state = transmitted | t1.state = wait) & (t2.state = request | t2.state = D4) & (t3.state = transmitted | t3.state = wait) & (t4.state = transmitted   | t4.state = wait)) : receiving1;
-                -- Case in which a collision isn't present and only one tag is asking to send. In such a case, start receiving.
-                --state=notCollision & ((t1.state = transmitted | t1.state = wait) & (t2.state = transmitted | t2.state = wait) & (t3.state = request | t3.state = D4) & (t4.state = transmitted   | t4.state = wait)) : receiving1;
-                -- Case in which a collision isn't present and only one tag is asking to send. In such a case, start receiving.
-                --state=notCollision & ((t1.state = transmitted | t1.state = wait) & (t2.state = transmitted | t2.state = wait) & (t3.state = transmitted | t3.state = wait) & (t4.state = request | t4.state = D4)) : receiving1;
-                
                 -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                state=notCollision & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : receiving2;
-                
-                state=receiving1 & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : receiving2;
+                state = notCollision    & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : receiving1;
 
-                state=receiving2 & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : receiving3;
-                
-                state=receiving3 & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : receiving4;
-                
-                state=receiving4 & (t1.state = transmitting xor t2.state = transmitting xor t3.state = transmitting xor t4.state = transmitting) : free;
+                state = receiving1 : receiving2;
 
-                -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                --state=receiving & (t2.state = transmitting) : idle;
-                -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                --state=receiving & (t3.state = transmitting) : idle;
-                -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                --state=receiving & (t4.state = transmitting) : idle;
+                state = receiving2 : receiving3;
+                
+                state = receiving3 : receiving4;
+                
+                state = receiving4 : free;
 
                 -- Case in which every tag has transmitted, the receiver signals that the round is over.
-                state=idle & ((t1.state=transmitted) & (t2.state=transmitted) & (t3.state=transmitted) & (t4.state=transmitted)) : completed;
+                state = idle & ((t1.state = transmitted) & (t2.state = transmitted) & (t3.state = transmitted) & (t4.state = transmitted)) : completed;
                 state = final :receiving1;
                 -- Case that allows tags to put themselves back in the queue, the round is not over.
-                state=free : idle;
-
+                state = free : idle;
                 -- Case that allows tags to put themselves back in the starting state.
-                state=completed : idle;  
-
+                state = completed : idle;  
                 -- Default case, state remains the same.
                 TRUE : state;
             esac;

@@ -146,13 +146,13 @@ MODULE reader(t1, t2, t3, t4)
                 state=notCollision & ((t1.state = transmitted | t1.state = wait) & (t2.state = transmitted | t2.state = wait) & (t3.state = transmitted | t3.state = wait) & t4.state = request)  : receiving;
                 
                 -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                state=receiving & (t1.state = transmit) : idle;
+                state=receiving & (t1.state = transmit) : free;
                 -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                state=receiving & (t2.state = transmit) : idle;
+                state=receiving & (t2.state = transmit) : free;
                 -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                state=receiving & (t3.state = transmit) : idle;
+                state=receiving & (t3.state = transmit) : free;
                 -- Case in which the reader is receiving and the tag is the only one transmitting, communication is successful.
-                state=receiving & (t4.state = transmit) : idle;
+                state=receiving & (t4.state = transmit) : free;
 
                 -- Case in which every tag has transmitted, the receiver signals that the round is over.
                 state=idle & ((t1.state=transmitted) & (t2.state=transmitted) & (t3.state=transmitted) & (t4.state=transmitted)) : completed;
