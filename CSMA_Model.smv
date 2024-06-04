@@ -6,7 +6,9 @@ MODULE main
         t3 : tag(r);
         t4 : tag(r);
         r : reader(t1, t2, t3, t4);
+
     -- Exclusivity condition: checks if AT LEAST two tags are capable of transmitting simultaneously
+    -- expressed as unreachability property
     CTLSPEC
     !EF  ((t1.state = transmitting & t2.state = transmitting) |
           (t1.state = transmitting & t3.state = transmitting) |
@@ -16,6 +18,7 @@ MODULE main
           (t3.state = transmitting & t4.state = transmitting) )
 
     -- Exclusivity condition: checks that the previous condition is respected
+    -- expressed as reachability property
     CTLSPEC
     AG  (!(t1.state = transmitting & t2.state = transmitting) &
          !(t1.state = transmitting & t3.state = transmitting) &
@@ -25,22 +28,31 @@ MODULE main
          !(t3.state = transmitting & t4.state = transmitting) )
 
     -- Checks that every round is capable of making each tag transmitting its message 
+    -- Starvation condition expressed as a liveness property
     CTLSPEC
     AG EF((t1.state=transmitted) & (t2.state=transmitted) & (t3.state=transmitted) & (t4.state=transmitted))
 
     -- Similar to above, checks that the reader is capable of finishing the round
+    -- Starvation condition expressed as unreachability property
     CTLSPEC
     AG AF (r.state=completed)
 
+    -- Reachability property
+    CTLSPEC
+    EF (r.state=completed)
+
     -- Checks if a tag always has the capacity to transmit a message given a request to send.
     -- The same is applied to all tags.
+    -- Starvation condition expressed as liveness property 
     CTLSPEC
     AG ((t1.state=request) -> AF (t1.state=transmitting))
 
-    -- Checks that a tag can always finish transmission
-    CTLSPEC
-    AG(t1.state=transmitting -> AF(t1.state=transmitted))
+    -- Weak fairness property
+    LTLSPEC
+    F(G t1.state = request) -> G(F t1.state = transmitted)
+
     -- Checks that if each tag has transmitted, the round ends.
+    -- Reachability property
     LTLSPEC
     G F(((t1.state=transmitted) & (t2.state=transmitted) & (t3.state=transmitted) & (t4.state=transmitted)) -> G F(r.state=completed))
 
@@ -62,7 +74,7 @@ MODULE tag(reader)
             case
                 -- When in the initial state, immediately try to send a message.
                 state = idle : request;
-                -- If there are multiple tags requesting to send, throw a four sided die.
+                -- If there are multiple tags requesting to send, throw a four sided dice.
                 -- If it lands on 4, keep requesting.
                 -- If it lands on anything else, start waiting and move yourself out of the queue.
                 state = request & reader.state = collision : {D1, D2, D3, request};
@@ -117,7 +129,7 @@ MODULE reader(t1, t2, t3, t4)
                 state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=request     & t4.state=transmitted) : final; 
                 state=idle & (t1.state=transmitted & t2.state=transmitted & t3.state=transmitted & t4.state=request    ) : final;
 
-                -- If there are at least two tags requesting to transmit, go in the collision state and ask the tags to throw a die.
+                -- If there are at least two tags requesting to transmit, go in the collision state and ask the tags to throw a dice.
                 state=idle &    ((t1.state=request & t2.state=request)    | 
                                  (t1.state=request & t3.state=request)    | 
                                  (t1.state=request & t4.state=request)    | 
